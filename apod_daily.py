@@ -7,17 +7,17 @@ from subprocess import Popen, PIPE
 import webbrowser
 
 
-def newest_file_time(path):
+def current_file():
+    tmp_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "tmp")
+    today = datetime.datetime.today()
+    current = "apod_{:04d}-{:02d}-{:02d}.jpg".format(today.year, today.month, today.day)
     try:
-        files = os.listdir(path)
-        paths = [os.path.join(path, basename) for basename in files]
-        try:
-            time = datetime.datetime.fromtimestamp(os.path.getctime(max(paths, key=os.path.getctime)))
-        except ValueError:
-            time = datetime.datetime.today() - datetime.timedelta(days=2)  # return some old time and update
+        if current in os.listdir(tmp_path):
+            return True
+        else:
+            return False
     except FileNotFoundError:
-        time = datetime.datetime.today() - datetime.timedelta(days=2)  # return some old time and update
-    return time
+        return False
 
 
 def purge(dir):  # only used to clean up old images
@@ -33,30 +33,31 @@ def main(start_display, web):
     hdurl = response["hdurl"]
     url = response["url"]
     apod_date = response["date"]
-    cwd = os.getcwd()
+    tmp_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "tmp")
+    apod_file = os.path.join(tmp_dir, "apod_{}.jpg".format(apod_date))
 
-    if not os.path.exists("tmp"):
-        os.makedirs("tmp")
+    if not os.path.exists(tmp_dir):
+        os.makedirs(tmp_dir)
 
     if web:
         webbrowser.open("https://apod.nasa.gov/apod/astropix.html")
     if media_type == "image":
-        purge("{}/tmp/".format(cwd))  # clean up old images
+        purge(tmp_dir)  # clean up old images
         r = requests.get(hdurl, stream=True)
         if r.status_code == 200:
-            with open("tmp/apod_{}.jpg".format(apod_date), 'wb') as f:
+            with open(apod_file, "wb") as f:
                 r.raw.decode_content = True
                 shutil.copyfileobj(r.raw, f)
 
-        for i in range(start_display, int(screen_num) + 1):
+        for i in range(start_display, max(int(screen_num) + 1,start_display+1)):
             scpt = '''
                 tell application "System Events"
                     tell desktop {}
                         set picture rotation to 0
-                        set picture to "{}/tmp/apod_{}.jpg"
+                        set picture to "{}"
                     end tell
                 end tell
-                '''.format(i, cwd, apod_date)
+                '''.format(i, apod_file)
 
             p = Popen(['osascript', '-'], stdin=PIPE, stdout=PIPE, stderr=PIPE, universal_newlines=True)
             stdout, stderr = p.communicate(scpt)
@@ -86,5 +87,5 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    if newest_file_time("/Users/schneider/codes/apod/tmp").date() < datetime.datetime.today().date():
+    if not current_file():
         main(int(args.display), args.web)
